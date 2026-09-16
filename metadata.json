@@ -1,0 +1,6 @@
+{
+  "name": "Grafika Studio AI",
+  "description": "Platform desain grafis modern dengan template kurasi admin, kanvas editor interaktif, asisten AI Gemini, notifikasi real-time, dan multi-bahasa lengkap.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
