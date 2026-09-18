@@ -168,7 +168,7 @@ export const TemplateGallery: React.FC = () => {
             CREATIVE HUB
           </h1>
           <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-neutral-900 text-white tracking-wide uppercase">
-            Studio Pro
+            {currentUser.isBelajarAccount ? "🎓 Dashboard Pelajar Pro" : "Dashboard Utama"}
           </span>
         </div>
 

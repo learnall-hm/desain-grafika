@@ -48,9 +48,7 @@ export const LoginModal: React.FC = () => {
         setIsLoginModalOpen(false);
         setEmail("");
         setPassword("");
-        if (selectedRole === "admin_utama") {
-          setActiveView("admin_portal");
-        }
+        setActiveView("templates");
       }
     } else {
       // Register

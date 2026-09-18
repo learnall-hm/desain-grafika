@@ -55,6 +55,7 @@ interface AppContextType {
   loginAdminTour: (email: string, password?: string) => { success: boolean; error?: string };
   registerUser: (name: string, email: string, role?: UserRole, password?: string) => { success: boolean; error?: string };
   loginWithBelajarAccount: (customEmail?: string) => { success: boolean };
+  loginWithPelajarAccount: (customName?: string, customEmail?: string) => { success: boolean };
   logout: () => void;
   updateUserProfile: (data: Partial<User>) => void;
   // Views
@@ -257,10 +258,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ];
   });
 
-  // Navigation & Views (Defaults to admin_portal to show the main admin interface as in the image)
+  // Navigation & Views (Defaults to login to show the requested login screen on main view)
   const [activeView, setActiveView] = useState<
     "templates" | "editor" | "my_designs" | "admin_portal" | "upload_design" | "login"
-  >("admin_portal");
+  >("login");
 
   // Current editing design
   const [currentEditingDesign, setCurrentEditingDesign] = useState<UserDesign | null>(null);
@@ -555,10 +556,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  // Quick 1-click or customized login for Akun Pelajar / Siswa (.belajar.id / Siswa)
+  const loginWithPelajarAccount = (customName?: string, customEmail?: string) => {
+    const email = customEmail || "siswa.cerdas@smp.belajar.id";
+    const name = customName || "Budi Pratama (Pelajar Belajar ID)";
+    const pelajarUser: User = {
+      ...defaultRegularUser,
+      id: "usr-pelajar-pro",
+      name,
+      email,
+      role: "pengguna",
+      tier: "premium",
+      isBelajarAccount: true,
+      belajarInstitution: "SMP / SMA Negeri Pelajar Cerdas (Akun Pembelajaran Kemendikbudristek)",
+      bio: "Pelajar Aktif & Kreator Presentasi & Desain Tugas Sekolah Digital",
+      avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80",
+      joinedDate: "Maret 2026",
+      designsCount: 8,
+    };
+    setCurrentUser(pelajarUser);
+    showToast("🎓 Masuk Berhasil! Akun Pelajar Terverifikasi - Akses Pro Gratis Terbuka!");
+    addNotification(
+      "Akses Premium Akun Pelajar Aktif",
+      `Selamat datang ${pelajarUser.name}! Anda terverifikasi dengan Akun Pelajar Kemendikbudristek. Semua fitur Pro & Template Tugas Sekolah gratis tanpa batas.`,
+      "system",
+      "Pelajar Pro"
+    );
+    return { success: true };
+  };
+
   const logout = () => {
     setCurrentUser(defaultRegularUser);
     setIsLogoutConfirmOpen(false);
-    setActiveView("templates");
+    setActiveView("login");
     showToast("Anda telah keluar dari akun.");
   };
 
@@ -891,6 +921,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginAdminTour,
         registerUser,
         loginWithBelajarAccount,
+        loginWithPelajarAccount,
         logout,
         updateUserProfile,
         activeView,
