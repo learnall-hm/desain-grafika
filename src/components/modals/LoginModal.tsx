@@ -41,13 +41,16 @@ export const LoginModal: React.FC = () => {
     setErrorMessage(null);
 
     if (authMode === "login") {
-      const result = login(email, selectedRole);
+      const result = login(email, selectedRole, password);
       if (!result.success) {
         setErrorMessage(result.error || t("loginErrorAdminOnly"));
       } else {
         setIsLoginModalOpen(false);
         setEmail("");
         setPassword("");
+        if (selectedRole === "admin_utama") {
+          setActiveView("admin_portal");
+        }
       }
     } else {
       // Register

@@ -114,28 +114,15 @@ export const Navbar: React.FC = () => {
               {/* Admin Portal Tab */}
               <button
                 id="nav-admin-portal-btn"
-                onClick={() => {
-                  if (currentUser.role === "admin_utama") {
-                    setActiveView("admin_portal");
-                  } else {
-                    setIsLoginModalOpen(true);
-                  }
-                }}
+                onClick={() => setActiveView("admin_portal")}
                 className={`px-3 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
                   activeView === "admin_portal"
-                    ? "bg-purple-100 text-purple-800"
-                    : currentUser.role === "admin_utama"
-                    ? "text-purple-700 hover:bg-purple-50"
-                    : "text-slate-500 hover:text-purple-700 hover:bg-purple-50"
+                    ? "bg-sky-100 text-sky-800"
+                    : "text-sky-700 hover:bg-sky-50"
                 }`}
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-                {t("navAdminPortal")}
-                {currentUser.role !== "admin_utama" && (
-                  <span className="text-[9px] px-1 py-0.2 rounded-xs bg-slate-100 text-slate-500 uppercase font-semibold">
-                    Kunci
-                  </span>
-                )}
+                <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
+                <span>Admin Booking Tour</span>
               </button>
             </nav>
           </div>

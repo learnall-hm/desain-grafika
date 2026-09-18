@@ -40,11 +40,15 @@ export const LoginView: React.FC = () => {
     if (mode === "login") {
       // Check if trying to login as admin
       const role = email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase() ? "admin_utama" : "pengguna";
-      const result = login(email, role);
+      const result = login(email, role, password);
       if (!result.success) {
         setErrorMessage(result.error || "Gagal masuk. Periksa kembali email Anda.");
       } else {
-        setActiveView("templates");
+        if (role === "admin_utama") {
+          setActiveView("admin_portal");
+        } else {
+          setActiveView("templates");
+        }
       }
     } else {
       // Register mode

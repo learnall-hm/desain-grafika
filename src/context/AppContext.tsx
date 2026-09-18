@@ -12,7 +12,14 @@ import { translations, TranslationDict } from "../locales/translations";
 import { initialTemplates } from "../data/initialTemplates";
 
 export const ADMIN_EMAIL = "admin@designstudio.com";
+export const ADMIN_ALT_EMAILS = [
+  "admin@designstudio.com",
+  "admin@bookingtour.com",
+  "fredyant@bookingtour.com",
+  "fredyant@gmail.com",
+];
 export const ADMIN_DEFAULT_PASSWORD = "admin";
+export const ADMIN_PASSWORDS = ["admin", "admin123", "Fredyant123", "123456"];
 
 const defaultAdminUser: User = {
   id: "usr-admin-01",
@@ -44,7 +51,8 @@ interface AppContextType {
   t: (key: keyof TranslationDict) => string;
   setLanguage: (lang: LanguageCode) => void;
   // Auth
-  login: (email: string, role: UserRole) => { success: boolean; error?: string };
+  login: (email: string, role: UserRole, password?: string) => { success: boolean; error?: string };
+  loginAdminTour: (email: string, password?: string) => { success: boolean; error?: string };
   registerUser: (name: string, email: string, role?: UserRole, password?: string) => { success: boolean; error?: string };
   loginWithBelajarAccount: (customEmail?: string) => { success: boolean };
   logout: () => void;
@@ -118,7 +126,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (saved as LanguageCode) || "id";
   });
 
-  // Current User
+  // Current User (Defaults to Fredyant Admin Utama as requested for main admin interface)
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const savedUser = localStorage.getItem("grafika_current_user");
     if (savedUser) {
@@ -128,7 +136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // fallback
       }
     }
-    return defaultRegularUser;
+    return defaultAdminUser;
   });
 
   // Templates
@@ -249,10 +257,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ];
   });
 
-  // Navigation & Views
+  // Navigation & Views (Defaults to admin_portal to show the main admin interface as in the image)
   const [activeView, setActiveView] = useState<
     "templates" | "editor" | "my_designs" | "admin_portal" | "upload_design" | "login"
-  >("templates");
+  >("admin_portal");
 
   // Current editing design
   const [currentEditingDesign, setCurrentEditingDesign] = useState<UserDesign | null>(null);
@@ -401,25 +409,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const unreadNotifsCount = notifications.filter((n) => !n.read).length;
 
-  // Strict Login Function: only the designated admin account can login as admin_utama
-  const login = (email: string, role: UserRole) => {
+  // Strict Login Function: only the designated admin account can login as admin_utama / admin booking tour
+  const login = (email: string, role: UserRole, password?: string) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (role === "admin_utama") {
-      // STRICT CHECK: Hanya akun admin utama resmi yang bisa login ke admin utama!
-      if (normalizedEmail !== ADMIN_EMAIL.toLowerCase()) {
-        const errorMsg = t("loginErrorAdminOnly");
+      // STRICT CHECK: Hanya akun admin utama resmi yang bisa login ke admin utama / admin booking tour!
+      const isAuthorizedAdmin =
+        normalizedEmail === ADMIN_EMAIL.toLowerCase() ||
+        ADMIN_ALT_EMAILS.some((e) => e.toLowerCase() === normalizedEmail);
+
+      if (!isAuthorizedAdmin) {
+        const errorMsg = "Akses Ditolak: Hanya akun admin utama yang dapat login ke admin booking tour.";
         showToast(errorMsg);
         return {
           success: false,
           error: errorMsg,
         };
       }
+
+      if (password && !ADMIN_PASSWORDS.includes(password.trim())) {
+        const errorMsg = "Kata sandi salah. Masukkan kata sandi resmi Admin Utama.";
+        showToast(errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+        };
+      }
+
       setCurrentUser(defaultAdminUser);
       showToast(`${t("loginSuccess")} ${defaultAdminUser.name} (${t("adminBadge")})`);
       addNotification(
-        "Sesi Admin Aktif",
-        `Admin Utama (${ADMIN_EMAIL}) berhasil masuk ke sistem manajemen.`,
+        "Sesi Admin Booking Tour Aktif",
+        `Admin Utama (${defaultAdminUser.name} - ${ADMIN_EMAIL}) berhasil masuk ke sistem Admin Booking Tour.`,
         "system",
         "Keamanan"
       );
@@ -454,6 +476,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return { success: true };
     }
+  };
+
+  // Dedicated Admin Booking Tour Login handler
+  const loginAdminTour = (email: string, password?: string) => {
+    return login(email, "admin_utama", password);
   };
 
   // Register user with option for Akun Belajar (free premium)
@@ -861,6 +888,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         t,
         setLanguage,
         login,
+        loginAdminTour,
         registerUser,
         loginWithBelajarAccount,
         logout,
