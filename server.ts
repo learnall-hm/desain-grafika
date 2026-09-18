@@ -17,8 +17,19 @@ app.use(express.json({ limit: "25mb" }));
 // Lazy Gemini client helper
 let geminiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI | null {
-  if (!geminiClient && process.env.GEMINI_API_KEY) {
-    geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+    return null;
+  }
+  if (!geminiClient) {
+    geminiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
   }
   return geminiClient;
 }
@@ -30,27 +41,36 @@ app.get("/api/health", (_req, res) => {
 
 // AI Design Generation API - Enhanced for high creativity and precision
 app.post("/api/gemini/generate-design", async (req, res) => {
+  const {
+    prompt,
+    category = "social_post",
+    language = "id",
+    style = "creative",
+    themeColor,
+    customWishes,
+  } = req.body || {};
+
+  const canvasWidth = Number(req.body.canvasWidth || req.body.dimensions?.width || 800);
+  const canvasHeight = Number(req.body.canvasHeight || req.body.dimensions?.height || 800);
+
+  if (!prompt || !prompt.trim()) {
+    return res.status(400).json({ success: false, error: "Prompt ide desain diperlukan" });
+  }
+
   try {
-    const {
-      prompt,
-      category = "social_post",
-      language = "id",
-      canvasWidth = 800,
-      canvasHeight = 800,
-      style = "creative",
-      themeColor,
-      customWishes,
-    } = req.body;
-
-    if (!prompt) {
-      return res.status(400).json({ error: "Prompt is required" });
-    }
-
     const ai = getGeminiClient();
 
     if (!ai) {
       const fallbackDesign = createFallbackDesign(prompt, category, canvasWidth, canvasHeight, language);
-      return res.json({ design: fallbackDesign, source: "procedural" });
+      return res.json({
+        success: true,
+        design: fallbackDesign,
+        title: fallbackDesign.title,
+        background: fallbackDesign.background,
+        elements: fallbackDesign.elements,
+        dimensions: { width: canvasWidth, height: canvasHeight },
+        source: "procedural",
+      });
     }
 
     const systemInstruction = `You are a world-renowned Creative Director and Master Graphic Designer at an award-winning digital agency.
@@ -66,7 +86,7 @@ Language for all text elements MUST be in: ${language} (id=Indonesian, en=Englis
 Your tasks:
 1. Strictly follow all consumer desires and prompt specifications rapidly and precisely.
 2. Formulate a rich, balanced visual composition with 5 to 10 deliberate elements:
-   - Geometric cards or containers with soft rounded corners (rx: 12-24) to frame key ideas.
+   - Geometric cards or containers with soft rounded corners (borderRadius: 12-24) to frame key ideas.
    - Distinctive typography hierarchy (Bold Headline, engaging Subtitle, informative bullet/feature highlights, and strong CTA).
    - Decorative visual accents (accent bars, geometric chips, badge pills, aesthetic tags).
    - High contrast, WCAG compliant colors with a sophisticated palette.
@@ -125,20 +145,23 @@ Return ONLY valid JSON (no markdown fences, no markdown ticks, no extra text):
 }`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: `Create highly creative, consumer-tailored graphic design for: ${prompt}. Additional notes: ${customWishes || "Make it eye-catching and modern."}`,
+      model: "gemini-3.6-flash",
+      contents: `Create highly creative, consumer-tailored graphic design for: ${prompt}. Category: ${category}. Dimensions: ${canvasWidth}x${canvasHeight}px. Additional desires: ${customWishes || "Make it eye-catching and modern."}`,
       config: {
         systemInstruction,
         responseMimeType: "application/json",
       },
     });
 
-    const responseText = response.text || "{}";
-    let parsedData;
+    let raw = response.text ? response.text.trim() : "{}";
+    if (raw.startsWith("```json")) raw = raw.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    else if (raw.startsWith("```")) raw = raw.replace(/^```\s*/, "").replace(/\s*```$/, "");
+
+    let parsedData: any;
     try {
-      parsedData = JSON.parse(responseText.trim());
+      parsedData = JSON.parse(raw);
     } catch {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         parsedData = JSON.parse(jsonMatch[0]);
       } else {
@@ -146,13 +169,47 @@ Return ONLY valid JSON (no markdown fences, no markdown ticks, no extra text):
       }
     }
 
-    return res.json({ design: parsedData, source: "gemini" });
+    const normalizedDesign = {
+      title: parsedData.title || prompt.slice(0, 40),
+      category: parsedData.category || category,
+      width: canvasWidth,
+      height: canvasHeight,
+      background: parsedData.background || { type: "solid", color: "#0f172a" },
+      palette: parsedData.palette || ["#0f172a", "#6366f1", "#ec4899", "#ffffff"],
+      designTips: parsedData.designTips || "Tata letak dioptimalkan untuk dampak visual maksimal.",
+      elements: (parsedData.elements && Array.isArray(parsedData.elements) ? parsedData.elements : []).map((el: any, idx: number) => ({
+        ...el,
+        id: el.id || `elem-ai-${Date.now()}-${idx}`,
+        type: el.type || "text",
+        x: typeof el.x === "number" ? el.x : 40,
+        y: typeof el.y === "number" ? el.y : 40 + idx * 60,
+        width: typeof el.width === "number" ? el.width : (el.type === "text" ? Math.min(600, canvasWidth - 80) : 120),
+        height: typeof el.height === "number" ? el.height : (el.type === "text" ? 50 : 40),
+        fill: el.fill || (el.type === "text" ? "#ffffff" : "#6366f1"),
+        opacity: typeof el.opacity === "number" ? el.opacity : 1,
+        zIndex: idx + 1,
+      })),
+    };
+
+    return res.json({
+      success: true,
+      design: normalizedDesign,
+      title: normalizedDesign.title,
+      background: normalizedDesign.background,
+      elements: normalizedDesign.elements,
+      dimensions: { width: canvasWidth, height: canvasHeight },
+      source: "gemini",
+    });
   } catch (err: any) {
     console.error("Gemini design generation error:", err);
-    const { prompt = "Modern Graphic Design", category = "social_post", language = "id", canvasWidth = 800, canvasHeight = 800 } = req.body || {};
     const fallbackDesign = createFallbackDesign(prompt, category, canvasWidth, canvasHeight, language);
     return res.json({
+      success: true,
       design: fallbackDesign,
+      title: fallbackDesign.title,
+      background: fallbackDesign.background,
+      elements: fallbackDesign.elements,
+      dimensions: { width: canvasWidth, height: canvasHeight },
       source: "fallback",
       notice: err?.message || "Generated with procedural design engine",
     });
@@ -162,33 +219,46 @@ Return ONLY valid JSON (no markdown fences, no markdown ticks, no extra text):
 // AI Material Summarizer & Infographic/Slide Generator
 // "mampu merangkum materi yang diinginkan secara luas"
 app.post("/api/gemini/summarize-and-design", async (req, res) => {
+  const material = (req.body.material || req.body.materialText || "").trim();
+  const topic = (req.body.topic || req.body.subjectTitle || "Ringkasan Materi Edukasi").trim();
+  const targetFormat = req.body.targetFormat || req.body.format || "presentation_slide";
+  const language = req.body.language || "id";
+  const detailLevel = req.body.detailLevel || "comprehensive";
+  const customWishes = req.body.customWishes || req.body.wishes || "";
+
+  const canvasWidth = Number(
+    req.body.canvasWidth || req.body.dimensions?.width || (targetFormat === "presentation_slide" ? 960 : 800)
+  );
+  const canvasHeight = Number(
+    req.body.canvasHeight || req.body.dimensions?.height || (targetFormat === "presentation_slide" ? 540 : 1000)
+  );
+
+  if (!material && !topic) {
+    return res.status(400).json({ success: false, error: "Materi atau topik harus disediakan" });
+  }
+
   try {
-    const {
-      material,
-      topic = "Ringkasan Materi Edukasi",
-      targetFormat = "infographic",
-      language = "id",
-      canvasWidth = 800,
-      canvasHeight = 1000,
-      detailLevel = "comprehensive",
-    } = req.body;
-
-    if (!material && !topic) {
-      return res.status(400).json({ error: "Materi atau topik harus disediakan" });
-    }
-
     const ai = getGeminiClient();
 
     if (!ai) {
       // Procedural educational summary fallback
       const fallback = createEducationalSummaryFallback(topic, material || topic, canvasWidth, canvasHeight, language);
-      return res.json(fallback);
+      return res.json({
+        success: true,
+        ...fallback,
+        title: fallback.design.title,
+        background: fallback.design.background,
+        elements: fallback.design.elements,
+        dimensions: { width: canvasWidth, height: canvasHeight },
+        source: "procedural",
+      });
     }
 
     const systemInstruction = `You are an elite Educational Content Specialist, Infographic Architect, and Knowledge Visualizer.
 Your mission:
 1. Deeply analyze and BROADLY SUMMARIZE the provided study material, article, or topic into a rich, structured, comprehensive summary with broad coverage of essential concepts, context, key takeaways, and breakdown points.
 2. Transform that summary directly into a ready-to-render, highly aesthetic Infographic / Educational Presentation Slide canvas design of size ${canvasWidth} x ${canvasHeight} pixels.
+${customWishes ? `Specific User Desires: "${customWishes}"` : ""}
 3. Language for summary and design text: ${language} (id=Indonesian, en=English, zh=Chinese, ja=Japanese, ar=Arabic, es=Spanish).
 
 The JSON output MUST follow this strict structure:
@@ -219,7 +289,7 @@ The JSON output MUST follow this strict structure:
   ],
   "design": {
     "title": "Infografis: ${topic}",
-    "category": "poster",
+    "category": "${targetFormat === "presentation_slide" ? "banner" : "poster"}",
     "background": {
       "type": "gradient",
       "color": "#0f172a",
@@ -227,7 +297,16 @@ The JSON output MUST follow this strict structure:
       "gradientDirection": "to bottom"
     },
     "elements": [
-      // Banner header, topic badge, key thesis card, 3-4 distinct summary card containers with title and text, and conclusion tag
+      {
+        "id": "el-1",
+        "type": "text" | "shape" | "badge",
+        "text": "...",
+        "x": 30,
+        "y": 30,
+        "width": 600,
+        "height": 40,
+        "fill": "#ffffff"
+      }
     ]
   }
 }
@@ -237,10 +316,12 @@ Design elements must be spaced within canvas dimensions 0..${canvasWidth} and 0.
 Topic: ${topic}
 Material:
 ${material || topic}
-Detail Level: ${detailLevel}`;
+Format: ${targetFormat}
+Detail Level: ${detailLevel}
+Canvas Size: ${canvasWidth}x${canvasHeight}px`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-3.6-flash",
       contents: promptText,
       config: {
         systemInstruction,
@@ -248,12 +329,15 @@ Detail Level: ${detailLevel}`;
       },
     });
 
-    const responseText = response.text || "{}";
-    let parsedData;
+    let raw = response.text ? response.text.trim() : "{}";
+    if (raw.startsWith("```json")) raw = raw.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    else if (raw.startsWith("```")) raw = raw.replace(/^```\s*/, "").replace(/\s*```$/, "");
+
+    let parsedData: any;
     try {
-      parsedData = JSON.parse(responseText.trim());
+      parsedData = JSON.parse(raw);
     } catch {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         parsedData = JSON.parse(jsonMatch[0]);
       } else {
@@ -261,23 +345,70 @@ Detail Level: ${detailLevel}`;
       }
     }
 
-    return res.json({ ...parsedData, source: "gemini" });
+    const design = parsedData.design || {};
+    const normalizedDesign = {
+      title: design.title || parsedData.summaryTitle || topic,
+      category: targetFormat === "presentation_slide" ? "banner" : "poster",
+      width: canvasWidth,
+      height: canvasHeight,
+      background: design.background || {
+        type: "gradient",
+        color: "#030712",
+        gradientColors: ["#030712", "#111827"],
+        gradientDirection: "to bottom",
+      },
+      elements: (design.elements && Array.isArray(design.elements) ? design.elements : []).map((el: any, idx: number) => ({
+        ...el,
+        id: el.id || `summary-el-${Date.now()}-${idx}`,
+        type: el.type || "text",
+        x: typeof el.x === "number" ? el.x : 30,
+        y: typeof el.y === "number" ? el.y : 30 + idx * 70,
+        width: typeof el.width === "number" ? el.width : (el.type === "text" ? canvasWidth - 60 : 140),
+        height: typeof el.height === "number" ? el.height : (el.type === "text" ? 50 : 36),
+        fill: el.fill || (el.type === "text" ? "#ffffff" : "#4f46e5"),
+        zIndex: idx + 1,
+      })),
+    };
+
+    return res.json({
+      success: true,
+      summaryTitle: parsedData.summaryTitle || topic,
+      topic: parsedData.topic || topic,
+      broadSummaryText: parsedData.broadSummaryText || "",
+      keyTakeaway: parsedData.keyTakeaway || "",
+      structuredPoints: parsedData.structuredPoints || [],
+      design: normalizedDesign,
+      title: normalizedDesign.title,
+      background: normalizedDesign.background,
+      elements: normalizedDesign.elements,
+      dimensions: { width: canvasWidth, height: canvasHeight },
+      source: "gemini",
+    });
   } catch (err: any) {
     console.error("Gemini summarize error:", err);
-    const { topic = "Materi Pembelajaran", material = "", canvasWidth = 800, canvasHeight = 1000, language = "id" } = req.body || {};
     const fallback = createEducationalSummaryFallback(topic, material || topic, canvasWidth, canvasHeight, language);
-    return res.json({ ...fallback, source: "procedural" });
+    return res.json({
+      success: true,
+      ...fallback,
+      title: fallback.design.title,
+      background: fallback.design.background,
+      elements: fallback.design.elements,
+      dimensions: { width: canvasWidth, height: canvasHeight },
+      source: "fallback",
+      notice: err?.message || "Generated with procedural summary engine",
+    });
   }
 });
 
 // AI Copywriting & Tagline generator
 app.post("/api/gemini/suggest-copy", async (req, res) => {
   try {
-    const { topic, tone = "professional", language = "id" } = req.body;
+    const { topic = "Desain Grafis", tone = "professional", language = "id" } = req.body || {};
     const ai = getGeminiClient();
 
     if (!ai) {
       return res.json({
+        success: true,
         headlines: [
           `Kreasi Terbaik: ${topic}`,
           `Eksklusif & Terpercaya - ${topic}`,
@@ -294,9 +425,9 @@ app.post("/api/gemini/suggest-copy", async (req, res) => {
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-3.6-flash",
       contents: `Generate marketing copy, taglines, headlines and CTAs for graphic design on topic: "${topic}". Tone: ${tone}. Target language: ${language}.
-Return JSON:
+Return JSON format:
 {
   "headlines": ["string", "string", "string", "string"],
   "taglines": ["string", "string", "string"],
@@ -307,11 +438,28 @@ Return JSON:
       },
     });
 
-    const parsed = JSON.parse(response.text || "{}");
-    return res.json(parsed);
+    let raw = response.text ? response.text.trim() : "{}";
+    if (raw.startsWith("```json")) raw = raw.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    else if (raw.startsWith("```")) raw = raw.replace(/^```\s*/, "").replace(/\s*```$/, "");
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : {};
+    }
+
+    return res.json({
+      success: true,
+      headlines: parsed.headlines || [`Kreasi Terbaik: ${topic}`, `Desain Modern: ${topic}`],
+      taglines: parsed.taglines || ["Wujudkan ide Anda sekarang", "Tingkatkan kehadiran visual Anda"],
+      callToActions: parsed.callToActions || ["Mulai Desain", "Pesan Sekarang", "Pelajari Lebih Lanjut"],
+    });
   } catch (err: any) {
     console.error("Copy suggestion error:", err);
     return res.json({
+      success: true,
       headlines: ["Karya Visual Berkualitas", "Desain Menarik & Berkesan", "Solusi Desain Cepat"],
       taglines: ["Wujudkan ide Anda sekarang", "Tingkatkan kehadiran visual Anda"],
       callToActions: ["Mulai Desain", "Pilih Sekarang", "Pelajari Lebih Lanjut"],

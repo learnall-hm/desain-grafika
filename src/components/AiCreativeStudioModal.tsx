@@ -123,6 +123,8 @@ export const AiCreativeStudioModal: React.FC<AiCreativeStudioModalProps> = ({
           style,
           themeColor,
           customWishes,
+          canvasWidth: width,
+          canvasHeight: height,
           dimensions: { width, height },
           isPremium: isUserPremium,
           speedPriority: isUserPremium ? "turbo" : "standard",
@@ -130,18 +132,30 @@ export const AiCreativeStudioModal: React.FC<AiCreativeStudioModalProps> = ({
       });
 
       const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!res.ok) {
         throw new Error(data.error || "Gagal membuat desain AI.");
+      }
+
+      // Robustly extract design payload whether nested under data.design or at root
+      const designPayload = data.design || data;
+      const elementsList = Array.isArray(designPayload.elements)
+        ? designPayload.elements
+        : Array.isArray(data.elements)
+        ? data.elements
+        : [];
+
+      if (elementsList.length === 0) {
+        throw new Error("AI tidak mengembalikan elemen desain yang valid. Coba prompt lain.");
       }
 
       const generatedDesign: UserDesign = {
         id: `design-ai-${Date.now()}`,
-        title: data.title || prompt.slice(0, 30),
+        title: designPayload.title || data.title || prompt.slice(0, 30),
         category,
-        width: data.dimensions?.width || width,
-        height: data.dimensions?.height || height,
-        background: data.background || { type: "solid", color: "#0f172a" },
-        elements: (data.elements || []).map((el: any, idx: number) => ({
+        width: Number(designPayload.width || data.dimensions?.width || width),
+        height: Number(designPayload.height || data.dimensions?.height || height),
+        background: designPayload.background || data.background || { type: "solid", color: "#0f172a" },
+        elements: elementsList.map((el: any, idx: number) => ({
           ...el,
           id: el.id || `ai-el-${Date.now()}-${idx}`,
         })),
@@ -177,33 +191,54 @@ export const AiCreativeStudioModal: React.FC<AiCreativeStudioModalProps> = ({
 
     setIsLoading(true);
     try {
+      const targetWidth = summaryFormat === "presentation_slide" ? 960 : 800;
+      const targetHeight = summaryFormat === "presentation_slide" ? 540 : 1000;
+
       const res = await fetch("/api/gemini/summarize-and-design", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          material: materialText,
           materialText,
+          topic: subjectTitle || "Rangkuman Materi Terpadu",
           subjectTitle: subjectTitle || "Rangkuman Materi Terpadu",
+          targetFormat: summaryFormat,
           format: summaryFormat,
           style: "Edukasi Interaktif & Jelas",
           customWishes: summaryWishes,
+          canvasWidth: targetWidth,
+          canvasHeight: targetHeight,
+          dimensions: { width: targetWidth, height: targetHeight },
           isPremium: isUserPremium,
           speedPriority: isUserPremium ? "turbo" : "standard",
         }),
       });
 
       const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!res.ok) {
         throw new Error(data.error || "Gagal merangkum materi.");
+      }
+
+      // Robustly extract design payload
+      const designPayload = data.design || data;
+      const elementsList = Array.isArray(designPayload.elements)
+        ? designPayload.elements
+        : Array.isArray(data.elements)
+        ? data.elements
+        : [];
+
+      if (elementsList.length === 0) {
+        throw new Error("AI tidak menghasilkan elemen desain untuk rangkuman. Silakan coba lagi.");
       }
 
       const summarizedDesign: UserDesign = {
         id: `design-summary-${Date.now()}`,
-        title: data.title || subjectTitle || "Rangkuman Materi Edukatif",
+        title: designPayload.title || data.title || subjectTitle || "Rangkuman Materi Edukatif",
         category: summaryFormat === "presentation_slide" ? "banner" : "poster",
-        width: data.dimensions?.width || 960,
-        height: data.dimensions?.height || 540,
-        background: data.background || { type: "solid", color: "#091428" },
-        elements: (data.elements || []).map((el: any, idx: number) => ({
+        width: Number(designPayload.width || data.dimensions?.width || targetWidth),
+        height: Number(designPayload.height || data.dimensions?.height || targetHeight),
+        background: designPayload.background || data.background || { type: "solid", color: "#091428" },
+        elements: elementsList.map((el: any, idx: number) => ({
           ...el,
           id: el.id || `summary-el-${Date.now()}-${idx}`,
         })),

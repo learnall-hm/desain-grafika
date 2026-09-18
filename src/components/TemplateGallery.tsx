@@ -29,6 +29,8 @@ export const TemplateGallery: React.FC = () => {
     templates,
     startDesignFromTemplate,
     startDesignFromScratch,
+    setCurrentEditingDesign,
+    saveUserDesign,
     setActiveView,
     currentUser,
     openExportModal,
@@ -724,8 +726,10 @@ export const TemplateGallery: React.FC = () => {
         isOpen={isAiStudioModalOpen}
         onClose={() => setIsAiStudioModalOpen(false)}
         onDesignGenerated={(design) => {
-          showToast(`Desain ${design.title} berhasil dibuat oleh AI!`);
+          saveUserDesign(design);
+          setCurrentEditingDesign(design);
           setActiveView("editor");
+          showToast(`Desain "${design.title}" berhasil dibuat AI dan siap diedit!`);
         }}
       />
     </div>

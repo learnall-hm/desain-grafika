@@ -54,6 +54,7 @@ import { exportAsPpt, exportAsPdf, exportAsDocument, exportAsPicture } from "../
 export const CanvasEditor: React.FC = () => {
   const {
     currentEditingDesign,
+    setCurrentEditingDesign,
     saveUserDesign,
     setActiveView,
     addNotification,
@@ -85,12 +86,15 @@ export const CanvasEditor: React.FC = () => {
   });
 
   const handleLoadAiGeneratedDesign = (design: UserDesign) => {
+    saveUserDesign(design);
+    setCurrentEditingDesign(design);
     setDesignTitle(design.title);
     setCanvasWidth(design.width);
     setCanvasHeight(design.height);
     setBgColor(design.background?.color || "#0f172a");
     setElements(design.elements);
     setSelectedId(null);
+    showToast(`Desain AI "${design.title}" berhasil dimuat ke kanvas!`);
   };
 
   // Design state
@@ -494,8 +498,8 @@ export const CanvasEditor: React.FC = () => {
       });
 
       const data = await res.json();
-      if (data.design) {
-        const gen = data.design;
+      const gen = data.design || data;
+      if (gen && (gen.elements || gen.title)) {
         if (gen.title) setDesignTitle(gen.title);
         if (gen.background?.color) setBgColor(gen.background.color);
         if (gen.elements && Array.isArray(gen.elements)) {
@@ -510,6 +514,8 @@ export const CanvasEditor: React.FC = () => {
           "activity",
           "Gemini AI"
         );
+      } else {
+        showToast("AI tidak mengembalikan tata letak yang valid.");
       }
     } catch (err) {
       console.error(err);
